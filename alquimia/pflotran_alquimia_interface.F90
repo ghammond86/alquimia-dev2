@@ -912,7 +912,7 @@ subroutine SetEngineFunctionality(reaction, option, functionality)
   implicit none
 
   ! function parameters
-  type (reaction_rt_type), intent(in) :: reaction
+  class (reaction_rt_type), intent(in) :: reaction
   type (option_type), intent(in) :: option
   type (AlquimiaEngineFunctionality), intent(out) :: functionality
 
@@ -936,7 +936,7 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   implicit none
 
   ! function parameters
-  type (reaction_rt_type), intent(in) :: reaction
+  class (reaction_rt_type), intent(in) :: reaction
   type (AlquimiaSizes), intent(out) :: sizes
 
   sizes%num_primary = reaction%ncomp
@@ -1290,13 +1290,13 @@ function ConvertAlquimiaConditionToPflotran(&
   type (AlquimiaGeochemicalCondition), intent(in) :: alquimia_condition
 
   ! Return value
-  type (tran_constraint_rt_type), pointer :: ConvertAlquimiaConditionToPflotran
+  class (tran_constraint_rt_type), pointer :: ConvertAlquimiaConditionToPflotran
 
   ! local variables
   integer :: i
   character (kAlquimiaMaxStringLength) :: name, constraint_type
   character (kAlquimiaMaxStringLength) :: associated_species
-  type (tran_constraint_rt_type), pointer :: tran_constraint
+  class (tran_constraint_rt_type), pointer :: tran_constraint
   type(aq_species_constraint_type), pointer :: pft_aq_species_constraint
   type(mineral_constraint_type), pointer :: pft_mineral_constraint
   type (AlquimiaAqueousConstraint), pointer :: alq_aqueous_constraints(:)
@@ -1675,7 +1675,7 @@ subroutine GetAuxiliaryDataSizes(reaction, num_ints, num_doubles)
 
   use Reaction_aux_module, only : reaction_rt_type
 
-  type (reaction_rt_type), intent(in) :: reaction
+  class (reaction_rt_type), intent(in) :: reaction
   integer (c_int), intent(out) :: num_ints
   integer (c_int), intent(out) :: num_doubles
 
@@ -1700,7 +1700,7 @@ subroutine PackAlquimiaAuxiliaryData(reaction, rt_auxvar, aux_data)
   use Reactive_Transport_Aux_module, only : reactive_transport_auxvar_type
 
   ! function parameters
-  type (reaction_rt_type), intent(in) :: reaction
+  class (reaction_rt_type), intent(in) :: reaction
   type(reactive_transport_auxvar_type), pointer, intent(in) :: rt_auxvar
   type (AlquimiaAuxiliaryData), intent(inout) :: aux_data
 
@@ -1757,7 +1757,7 @@ subroutine UnpackAlquimiaAuxiliaryData(aux_data, reaction, rt_auxvar)
 
   ! function parameters
   type (AlquimiaAuxiliaryData), intent(in) :: aux_data
-  type (reaction_rt_type), intent(inout) :: reaction
+  class (reaction_rt_type), intent(inout) :: reaction
   type(reactive_transport_auxvar_type), pointer, intent(inout) :: rt_auxvar
 
   ! local variables
@@ -1964,7 +1964,7 @@ subroutine PrintTranConstraint(tran_constraint)
   implicit none
 
   ! function parameters
-  type (tran_constraint_rt_type), pointer :: tran_constraint
+  class (tran_constraint_rt_type), pointer :: tran_constraint
 
   write (*, '(a)') "TranConstraint :"
   write (*, '(a, i4)') "    id : ", tran_constraint%id
