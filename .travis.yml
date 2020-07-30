@@ -26,10 +26,15 @@ env:
   - BUILD_TYPE=Release PETSC_DIR=$PWD/petsc PETSC_ARCH=petsc_opt DEBUG=0
 
 script: 
+  - echo 'landing directory'
+  - echo `pwd`
+  - cd
+  - echo 'CD'
   - echo `pwd`
   - cd ~
+  - echo '~'
   - echo `pwd`
-  - echo 'home'
+  - echo 'HOME'
   - echo $HOME
   - mkdir build && cd build
   - ls $PETSC_DIR
