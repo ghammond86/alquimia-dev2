@@ -99,11 +99,6 @@ module PFLOTRANAlquimiaInterface_module
   integer(kind=8), private, parameter :: integrity_check_value = 5784429996817932654_8
   !integer(kind=int64), private, parameter :: integrity_check_value = &
   !     b"0101000001000110011011000110111101010100011100100110000101101110"
-  type, private :: PFLOTRANEngineStateWrapper
-     integer(kind=8) :: integrity_check
-     type(PFLOTRANEngineState), pointer :: engine_state
-     logical :: hands_off
-  end type PFLOTRANEngineStateWrapper
 
   type, private :: PFLOTRANEngineState
      ! This is the data structure that stores the persistent data for
@@ -117,6 +112,8 @@ module PFLOTRANAlquimiaInterface_module
      !
      ! NOTE(bja): these are fortran pointers, so this struct can not
      ! be unpacked on the c side!
+     integer(kind=8) :: integrity_check
+     logical :: hands_off
      type(option_type), pointer :: option
      class(reaction_rt_type), pointer :: reaction
      type(reactive_transport_auxvar_type), pointer :: rt_auxvar
@@ -173,7 +170,6 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   type (AlquimiaEngineStatus), intent(out) :: status
 
   ! local variables
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   PetscBool :: option_found
   character(len=kAlquimiaMaxStringLength) :: string
@@ -261,11 +257,9 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   ! save pflotran's persistent data to a struct so the driver can
   ! store it for us
   !
-  allocate(engine_state_wrapper)
-  engine_state_wrapper%integrity_check = integrity_check_value
-  engine_state_wrapper%hands_off = hands_off
-  allocate(engine_state_wrapper%engine_state)
-  engine_state => engine_state_wrapper%engine_state
+  allocate(engine_state)
+  engine_state%integrity_check = integrity_check_value
+  engine_state%hands_off = hands_off
   engine_state%option => option
   engine_state%reaction => reaction
   engine_state%rt_auxvar => rt_auxvar
@@ -274,7 +268,7 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   engine_state%constraint_coupler => constraint_coupler
   engine_state%transport_constraints => transport_constraints
 
-  pft_engine_state_wrapper = c_loc(engine_state_wrapper)
+  pft_engine_state_wrapper = c_loc(engine_state)
 
   status%error = kAlquimiaNoError
   call f_c_string_ptr("Alquimia::PFLOTRAN::Setup() : successful.", &
@@ -307,21 +301,19 @@ subroutine Shutdown(pft_engine_state_wrapper, status)
   type (AlquimiaEngineStatus), intent(out) :: status
 
   ! local variables
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   class(tran_constraint_coupler_base_type), pointer :: constraint_coupler_base
 
   !write (*, '(a)') "PFLOTRANAlquimiaInterface::Shutdown() : "
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
-  if (engine_state_wrapper%integrity_check /= integrity_check_value) then
+  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
           status%message, kAlquimiaMaxStringLength)
      return
   end if
 
-  engine_state => engine_state_wrapper%engine_state
   !TODO(geh): remove when TranConstraintAddToList() has been refactored
   !           with target instead of pointer
   constraint_coupler_base => engine_state%constraint_coupler
@@ -335,8 +327,6 @@ subroutine Shutdown(pft_engine_state_wrapper, status)
 
   deallocate(engine_state)
   nullify(engine_state)
-  deallocate(engine_state_wrapper)
-  nullify(engine_state_wrapper)
 
   status%error = kAlquimiaNoError
 
@@ -379,25 +369,23 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
   real (c_double) :: constraint_value
   PetscReal :: porosity, volume
   integer :: i
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   PetscInt, parameter :: phase_index = 1
   logical, parameter :: copy_auxdata = .false.
 
   !write (*, '(a)') "PFLOTRANAlquimiaInterface::ProcessCondition() : "
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
-  if (engine_state_wrapper%integrity_check /= integrity_check_value) then
+  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
           status%message, kAlquimiaMaxStringLength)
      return
   end if
 
-  engine_state => engine_state_wrapper%engine_state
   ! NOTE(bja): the data stored in alquimia's aux_data is uninitialized
   ! at this point, so don't want to copy it! (copy_auxdata = false)
-  call CopyAlquimiaToAuxVars(copy_auxdata, engine_state_wrapper%hands_off, &
+  call CopyAlquimiaToAuxVars(copy_auxdata, engine_state%hands_off, &
        state, aux_data, properties, &
        engine_state%reaction, engine_state%global_auxvar, &
        engine_state%material_auxvar, engine_state%rt_auxvar)
@@ -503,7 +491,6 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   type (AlquimiaEngineStatus), intent(out) :: status
 
   ! local variables
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   PetscReal :: porosity, volume, vol_frac_prim
   PetscReal, allocatable :: guess(:)
@@ -513,21 +500,20 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   logical, parameter :: copy_auxdata = .true.
   class(reaction_rt_type), pointer :: reaction
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
-  if (engine_state_wrapper%integrity_check /= integrity_check_value) then
+  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
           status%message, kAlquimiaMaxStringLength)
      return
   end if
 
-  engine_state => engine_state_wrapper%engine_state
   reaction => engine_state%reaction
   !write (*, '(a)') "F_PFLOTRANAlquimiaInterface::ReactionStepOperatorSplit() :"
 
   !call PrintState(state)
   
-  call CopyAlquimiaToAuxVars(copy_auxdata, engine_state_wrapper%hands_off, &
+  call CopyAlquimiaToAuxVars(copy_auxdata, engine_state%hands_off, &
        state, aux_data, properties, &
        reaction, engine_state%global_auxvar, &
        engine_state%material_auxvar, engine_state%rt_auxvar)
@@ -610,22 +596,20 @@ subroutine GetAuxiliaryOutput( &
   type (AlquimiaEngineStatus), intent(out) :: status
 
   ! local variables
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   integer :: i, ph_index
   real (c_double), pointer :: local_array(:)
   PetscReal :: porosity, volume
   logical, parameter :: copy_auxdata = .true.
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
-  if (engine_state_wrapper%integrity_check /= integrity_check_value) then
+  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
           status%message, kAlquimiaMaxStringLength)
      return
   end if
 
-  engine_state => engine_state_wrapper%engine_state
   !write (*, '(a)') "PFLOTRANAlquimiaInterface::GetAuxiliaryOutput() :"
 
   ! FIXME(bja): right now, all info from the previous reaction step is
@@ -727,20 +711,17 @@ subroutine GetProblemMetaData(pft_engine_state_wrapper, meta_data, status)
   character (c_char), pointer :: name
   integer :: i, list_size, id
   integer(c_int), pointer :: idata(:)
-  type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
 
   !write (*, '(a)') "PFLOTRAN_Alquimia_GetEngineMetaData() :"
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
-  if (engine_state_wrapper%integrity_check /= integrity_check_value) then
+  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
           status%message, kAlquimiaMaxStringLength)
      return
   end if
-
-  engine_state => engine_state_wrapper%engine_state
 
   !
   ! copy primary indices and names
