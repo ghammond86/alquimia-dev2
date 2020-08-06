@@ -61,6 +61,7 @@ module PFLOTRANAlquimiaInterface_module
   ! pflotran modules
   use Option_module, only : option_type
   use Reaction_Aux_module, only : reaction_rt_type
+  use Reaction_Base_module, only : reaction_base_type
   use Reactive_Transport_Aux_module, only : reactive_transport_auxvar_type
   use Global_Aux_module, only : global_auxvar_type
   use Material_Aux_class, only : material_auxvar_type
@@ -158,7 +159,8 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   use Input_Aux_module, only : input_type, InputCreate, InputDestroy
   use Transport_Constraint_module, only : tran_constraint_list_type
   use Transport_Constraint_RT_module, only : tran_constraint_coupler_rt_type, &
-                                             TranConstraintCouplerRTCreate
+                                             TranConstraintCouplerRTCreate, &
+                                             TranConstraintRTCreate
 
   implicit none
 
@@ -234,6 +236,7 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   ! destroys the auxvar as well, so we need to keep it around long
   ! term.
   constraint_coupler => TranConstraintCouplerRTCreate(option)
+  constraint_coupler%constraint => TranConstraintRTCreate(option)
 
   !
   ! Read the constraints so we can finish using the input file.
@@ -447,6 +450,11 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
      end do
   end if
 
+  select type(t=>tran_constraint_base)
+    class is(tran_constraint_rt_type)
+      tran_constraint => t 
+  end select
+
   if (associated(tran_constraint)) then
      !call PrintTranConstraint(tran_constraint)
      ! tran_constraint should be valid. Now we can ask pflotran to
@@ -500,11 +508,12 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   type(PFLOTRANEngineStateWrapper), pointer :: engine_state_wrapper
   type(PFLOTRANEngineState), pointer :: engine_state
   PetscReal :: porosity, volume, vol_frac_prim
-  PetscReal :: tran_xx(state%total_mobile%size)
+  PetscReal, allocatable :: guess(:)
   PetscInt :: i, num_newton_iterations, ierror
   PetscInt, parameter :: natural_id = -999
   PetscInt, parameter :: phase_index = 1
   logical, parameter :: copy_auxdata = .true.
+  class(reaction_rt_type), pointer :: reaction
 
   call c_f_pointer(pft_engine_state_wrapper, engine_state_wrapper)
   if (engine_state_wrapper%integrity_check /= integrity_check_value) then
@@ -515,18 +524,23 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   end if
 
   engine_state => engine_state_wrapper%engine_state
+  reaction => engine_state%reaction
   !write (*, '(a)') "F_PFLOTRANAlquimiaInterface::ReactionStepOperatorSplit() :"
 
   !call PrintState(state)
   
   call CopyAlquimiaToAuxVars(copy_auxdata, engine_state_wrapper%hands_off, &
        state, aux_data, properties, &
-       engine_state%reaction, engine_state%global_auxvar, &
+       reaction, engine_state%global_auxvar, &
        engine_state%material_auxvar, engine_state%rt_auxvar)
 
-  ! copy total primaries into dummy transport variable
-  do i = 1, state%total_mobile%size
-     tran_xx(i) = engine_state%rt_auxvar%total(i, phase_index)
+  ! copy free ion primaries into initial guess array
+  allocate(guess(reaction%ncomp))
+  do i = 1, reaction%naqcomp
+     guess(i) = engine_state%rt_auxvar%pri_molal(i)
+  enddo
+  do i = 1, reaction%immobile%nimmobile
+     guess(i+reaction%offset_immobile) = engine_state%rt_auxvar%immobile(i)
   enddo
 
   vol_frac_prim = 1.0
@@ -539,9 +553,10 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
 !!$                       engine_state%global_auxvar, &
 !!$                       engine_state%reaction, engine_state%option)
 
-  call RReact(tran_xx, engine_state%rt_auxvar, engine_state%global_auxvar, &
+  call RReact(guess, engine_state%rt_auxvar, engine_state%global_auxvar, &
        engine_state%material_auxvar, num_newton_iterations, &
-       engine_state%reaction, natural_id, engine_state%option, ierror)
+       reaction, natural_id, engine_state%option, ierror)
+  deallocate(guess)
 
   call RUpdateKineticState(engine_state%rt_auxvar, engine_state%global_auxvar, &
        engine_state%material_auxvar, engine_state%reaction, engine_state%option)
