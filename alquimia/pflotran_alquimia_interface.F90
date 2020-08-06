@@ -236,7 +236,6 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   ! destroys the auxvar as well, so we need to keep it around long
   ! term.
   constraint_coupler => TranConstraintCouplerRTCreate(option)
-  constraint_coupler%constraint => TranConstraintRTCreate(option)
 
   !
   ! Read the constraints so we can finish using the input file.
@@ -435,6 +434,11 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
            if (StringCompareIgnoreCase(tran_constraint_base%name, name)) then
               ! found the constraint we are looking for, bail from the
               ! loop with the current pointer
+              engine_state%constraint_coupler%constraint => tran_constraint_base
+              select type(c => tran_constraint_base)
+                class is(tran_constraint_rt_type)
+                  tran_constraint => c
+              end select
               exit
            else
               ! check the next constraint
@@ -450,11 +454,6 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
      end do
   end if
 
-  select type(t=>tran_constraint_base)
-    class is(tran_constraint_rt_type)
-      tran_constraint => t 
-  end select
-
   if (associated(tran_constraint)) then
      !call PrintTranConstraint(tran_constraint)
      ! tran_constraint should be valid. Now we can ask pflotran to
@@ -465,7 +464,6 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
           engine_state%global_auxvar, &
           engine_state%material_auxvar, &
           engine_state%rt_auxvar, &
-          tran_constraint, &
           engine_state%constraint_coupler)
      ! now repack the processed constraint data into the alquimia
      ! struct for the driver.
@@ -1220,7 +1218,7 @@ end subroutine ReadPFLOTRANConstraints
 ! **************************************************************************** !
 subroutine ProcessPFLOTRANConstraint(option, reaction, global_auxvar, &
                                      material_auxvar, rt_auxvar, &
-                                     tran_constraint, constraint_coupler)
+                                     constraint_coupler)
 
   use Reaction_module, only : ReactionProcessConstraint, &
         ReactionPrintConstraint, ReactionEquilibrateConstraint
@@ -1229,8 +1227,7 @@ subroutine ProcessPFLOTRANConstraint(option, reaction, global_auxvar, &
   use Global_Aux_module, only : global_auxvar_type
   use Material_Aux_class, only : material_auxvar_type
   use Transport_Constraint_RT_module, only : tran_constraint_rt_type, &
-                                             tran_constraint_coupler_rt_type, &
-                                             TranConstraintRTCast
+                                             tran_constraint_coupler_rt_type
   use Option_module, only : option_type, printMsg
   use petscsys
   implicit none
@@ -1241,11 +1238,10 @@ subroutine ProcessPFLOTRANConstraint(option, reaction, global_auxvar, &
   type(global_auxvar_type), pointer, intent(inout) :: global_auxvar
   class(material_auxvar_type), pointer, intent(inout) :: material_auxvar
   type(reactive_transport_auxvar_type), pointer, intent(inout) :: rt_auxvar
-  class(tran_constraint_rt_type), pointer, intent(inout) :: tran_constraint
   class(tran_constraint_coupler_rt_type), pointer, intent(inout) :: constraint_coupler 
 
   ! local variables
-  class(tran_constraint_rt_type), pointer :: temp_constraint
+  class(tran_constraint_rt_type), pointer :: tran_constraint
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: card
   character(len=MAXWORDLENGTH) :: word
@@ -1258,16 +1254,24 @@ subroutine ProcessPFLOTRANConstraint(option, reaction, global_auxvar, &
   num_iterations = 0
   use_prev_soln_as_guess = PETSC_FALSE
 
+  select type(c => constraint_coupler%constraint)
+    class is(tran_constraint_rt_type)
+      tran_constraint => c
+  end select
+
   if (.not. associated(tran_constraint)) then
      ! TODO(bja) : report error
   end if
   ! initialize constraints
-  option%io_buffer = "initializing constraint : " // tran_constraint%name
+  option%io_buffer = "initializing constraint : " // &
+    tran_constraint%name
   call printMsg(option)
+
   call ReactionProcessConstraint(reaction,tran_constraint,option)
 
   ! equilibrate
-  option%io_buffer = "equilibrate constraint : " // tran_constraint%name
+  option%io_buffer = "equilibrate constraint : " // &
+    constraint_coupler%constraint%name
   call printMsg(option)
   call ReactionEquilibrateConstraint(rt_auxvar, global_auxvar, &
          material_auxvar, reaction, &
@@ -1280,15 +1284,8 @@ subroutine ProcessPFLOTRANConstraint(option, reaction, global_auxvar, &
   constraint_coupler%global_auxvar => global_auxvar
   constraint_coupler%rt_auxvar => rt_auxvar
   constraint_coupler%num_iterations = num_iterations
-  temp_constraint => TranConstraintRTCast(constraint_coupler%constraint)
-  temp_constraint%name = tran_constraint%name
-  temp_constraint%aqueous_species => tran_constraint%aqueous_species
-  temp_constraint%minerals => tran_constraint%minerals
-  temp_constraint%surface_complexes => tran_constraint%surface_complexes
-  temp_constraint%colloids => tran_constraint%colloids
 
   call ReactionPrintConstraint(constraint_coupler, reaction, option)
-
 
 end subroutine ProcessPFLOTRANConstraint
 
