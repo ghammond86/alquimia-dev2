@@ -133,7 +133,7 @@ contains
 ! **************************************************************************** !
 
 ! **************************************************************************** !
-subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
+subroutine Setup(input_filename, hands_off, pft_engine_state, sizes, &
                  functionality, status)
 !  NOTE: Function signature is dictated by the alquimia API.
 !
@@ -164,7 +164,7 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   ! function parameters
   character(kind=c_char), dimension(*), intent(in) :: input_filename
   logical (c_bool), value, intent(in) :: hands_off
-  type (c_ptr), intent(out) :: pft_engine_state_wrapper
+  type (c_ptr), intent(out) :: pft_engine_state
   type (AlquimiaSizes), intent(out) :: sizes
   type (AlquimiaEngineFunctionality), intent(out) :: functionality
   type (AlquimiaEngineStatus), intent(out) :: status
@@ -268,7 +268,7 @@ subroutine Setup(input_filename, hands_off, pft_engine_state_wrapper, sizes, &
   engine_state%constraint_coupler => constraint_coupler
   engine_state%transport_constraints => transport_constraints
 
-  pft_engine_state_wrapper = c_loc(engine_state)
+  pft_engine_state = c_loc(engine_state)
 
   status%error = kAlquimiaNoError
   call f_c_string_ptr("Alquimia::PFLOTRAN::Setup() : successful.", &
@@ -278,7 +278,7 @@ end subroutine Setup
 
 
 ! **************************************************************************** !
-subroutine Shutdown(pft_engine_state_wrapper, status)
+subroutine Shutdown(pft_engine_state, status)
 !  NOTE: Function signature is dictated by the alquimia API.
 
   use, intrinsic :: iso_c_binding, only : c_ptr, c_f_pointer
@@ -297,7 +297,7 @@ subroutine Shutdown(pft_engine_state_wrapper, status)
   implicit none
 
   ! function parameters
-  type (c_ptr), intent(inout) :: pft_engine_state_wrapper
+  type (c_ptr), intent(inout) :: pft_engine_state
   type (AlquimiaEngineStatus), intent(out) :: status
 
   ! local variables
@@ -306,7 +306,7 @@ subroutine Shutdown(pft_engine_state_wrapper, status)
 
   !write (*, '(a)') "PFLOTRANAlquimiaInterface::Shutdown() : "
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
@@ -334,7 +334,7 @@ end subroutine Shutdown
 
 
 ! **************************************************************************** !
-subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
+subroutine ProcessCondition(pft_engine_state, condition, properties, &
      state, aux_data, status)
 !  NOTE: Function signature is dictated by the alquimia API.
 
@@ -354,7 +354,7 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
   implicit none
 
   ! function parameters
-  type (c_ptr), intent(inout) :: pft_engine_state_wrapper
+  type (c_ptr), intent(inout) :: pft_engine_state
   type (AlquimiaGeochemicalCondition), intent(in) :: condition
   type (AlquimiaProperties), intent(in) :: properties
   type (AlquimiaState), intent(inout) :: state
@@ -375,7 +375,7 @@ subroutine ProcessCondition(pft_engine_state_wrapper, condition, properties, &
 
   !write (*, '(a)') "PFLOTRANAlquimiaInterface::ProcessCondition() : "
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
@@ -467,7 +467,7 @@ end subroutine ProcessCondition
 
 
 ! **************************************************************************** !
-subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
+subroutine ReactionStepOperatorSplit(pft_engine_state, &
      delta_t, properties, state, aux_data, status)
 !  NOTE: Function signature is dictated by the alquimia API.
 
@@ -483,7 +483,7 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   implicit none
 
   ! function parameters
-  type (c_ptr), intent(inout) :: pft_engine_state_wrapper
+  type (c_ptr), intent(inout) :: pft_engine_state
   real (c_double), value, intent(in) :: delta_t
   type (AlquimiaProperties), intent(in) :: properties
   type (AlquimiaState), intent(inout) :: state
@@ -500,7 +500,7 @@ subroutine ReactionStepOperatorSplit(pft_engine_state_wrapper, &
   logical, parameter :: copy_auxdata = .true.
   class(reaction_rt_type), pointer :: reaction
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
@@ -568,7 +568,7 @@ end subroutine ReactionStepOperatorSplit
 
 ! **************************************************************************** !
 subroutine GetAuxiliaryOutput( &
-     pft_engine_state_wrapper, &
+     pft_engine_state, &
      properties, &
      state, &
      aux_data, &
@@ -588,7 +588,7 @@ subroutine GetAuxiliaryOutput( &
   implicit none
 
   ! function parameters
-  type (c_ptr), intent(inout) :: pft_engine_state_wrapper
+  type (c_ptr), intent(inout) :: pft_engine_state
   type (AlquimiaProperties), intent(in) :: properties
   type (AlquimiaState), intent(in) :: state
   type (AlquimiaAuxiliaryData), intent(in) :: aux_data
@@ -602,7 +602,7 @@ subroutine GetAuxiliaryOutput( &
   PetscReal :: porosity, volume
   logical, parameter :: copy_auxdata = .true.
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
@@ -688,7 +688,7 @@ end subroutine GetAuxiliaryOutput
 
 
 ! **************************************************************************** !
-subroutine GetProblemMetaData(pft_engine_state_wrapper, meta_data, status)
+subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
   !  NOTE: Function signature is dictated by the alquimia API.
 
   use, intrinsic :: iso_c_binding, only : c_int, c_char, c_f_pointer
@@ -700,7 +700,7 @@ subroutine GetProblemMetaData(pft_engine_state_wrapper, meta_data, status)
   implicit none
 
   ! function parameters
-  type (c_ptr), intent(inout) :: pft_engine_state_wrapper
+  type (c_ptr), intent(inout) :: pft_engine_state
   type (AlquimiaProblemMetaData), intent(out) :: meta_data
   type (AlquimiaEngineStatus), intent(out) :: status
 
@@ -715,7 +715,7 @@ subroutine GetProblemMetaData(pft_engine_state_wrapper, meta_data, status)
 
   !write (*, '(a)') "PFLOTRAN_Alquimia_GetEngineMetaData() :"
 
-  call c_f_pointer(pft_engine_state_wrapper, engine_state)
+  call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
      status%error = kAlquimiaErrorEngineIntegrity
      call f_c_string_ptr("DEV_ERROR: pointer to engine state is not valid!", &
